@@ -122,7 +122,7 @@ Perfect for:
 - CI pipelines (run on feature branches)
 - Local development (fast feedback)
 
-** TODO
+** Todo
 - Run integration tests with setup.
 - Support other test runners.
 - Support ClojureScript.
