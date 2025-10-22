@@ -1,0 +1,129 @@
+* Grug Test Filter
+A dead simple Babashka script that runs only the tests affected by your changes.
+
+** What It Does
+- Finds changed =.clj/.cljc= files in your branch vs =main=
+- Discovers reverse dependencies (transitive)
+- Maps to test namespaces
+- Runs only affected tests with =lein eftest=
+
+** Prerequisites
+- [[https://babashka.org/][Babashka]]
+- [[https://github.com/BurntSushi/ripgrep][ripgrep]]
+- [[https://leiningen.org/][Leiningen]] with [[https://github.com/weavejester/eftest][eftest]]
+
+** Installation
+1. Copy the script to your project root:
+
+#+begin_src sh
+chmod +x test_runner.clj
+#+end_src
+
+2. Add test selectors to your =project.clj=:
+
+#+begin_src clojure
+;; Source: https://scribe.rip/helpshift-engineering/the-convoluted-magic-of-leiningen-test-selectors-2eb6c452dfcf
+:test-selectors {:default (constantly true)
+                 :unit [(fn [namespc & selector-args]
+                          (or (empty? selector-args)
+                              (some (fn [selector-arg]
+                                      (-> selector-arg
+                                          str
+                                          (clojure.string/split #"/" 2)
+                                          first
+                                          symbol
+                                          (= namespc)))
+                                    selector-args)))
+                        (fn [var-metadata & selector-args]
+                          (when-not (:integration var-metadata)
+                            (or (empty? selector-args)
+                                (some (fn [selector-arg]
+                                        (let [a-var (str "#'" selector-arg)]
+                                          (if (some #{\/} a-var)
+                                            (= a-var (-> var-metadata :leiningen.test/var str))
+                                            (= selector-arg (ns-name (:ns var-metadata))))))
+                                      selector-args))))]
+                 :integration [(fn [namespc & selector-args]
+                                 (or (empty? selector-args)
+                                     (some (fn [selector-arg]
+                                             (-> selector-arg
+                                                 str
+                                                 (clojure.string/split #"/" 2)
+                                                 first
+                                                 symbol
+                                                 (= namespc)))
+                                           selector-args)))
+                               (fn [var-metadata & selector-args]
+                                 (when (:integration var-metadata)
+                                   (or (empty? selector-args)
+                                       (some (fn [selector-arg]
+                                               (let [a-var (str "#'" selector-arg)]
+                                                 (if (some #{\/} a-var)
+                                                   (= a-var (-> var-metadata :leiningen.test/var str))
+                                                   (= selector-arg (ns-name (:ns var-metadata))))))
+                                             selector-args))))]}
+#+end_src
+
+** Usage
+#+begin_src sh
+# Run tests affected by changes in current branch vs main
+~/path/to/test_runner.clj
+#+end_src
+
+** How It Works
+1. *Git diff* - Compares your branch against =main=
+2. *Filter files* - Keeps only =.clj= and =.cljc= files
+3. *Find dependents* - Uses ripgrep to discover which files require the changed namespaces
+4. *Transitive closure* - Recursively finds all affected files
+5. *Map to tests* - Appends =-test= to each namespace
+6. *Filter tests* - Only includes namespaces that have actual test files
+7. *Run eftest* - Executes tests with =:unit= selector (excludes =^:integration= tests)
+
+** Directory Structure Support
+Works with any project structure:
+
+#+begin_example
+src/
+  clj/your/namespace.clj
+  cljc/your/shared.cljc
+test/
+  clj/your/namespace_test.clj
+  cljc/your/shared_test.cljc
+#+end_example
+
+The script automatically strips =clj/= and =cljc/= prefixes when converting paths to namespaces.
+
+** Integration Tests
+By default, the script runs all tests (no selector). Pass =:unit= or =:integration= to run only those tests.
+
+To run only unit tests:
+
+#+begin_src sh
+~/path/to/test_runner.clj :unit
+#+end_src
+
+To run only integration tests:
+
+#+begin_src sh
+~/path/to/test_runner.clj :integration
+#+end_src
+
+** Example Output
+#+begin_example
+Changed namespaces: your.namespace.core, your.namespace.utils
+Running tests for: (your.namespace.core-test your.namespace.utils-test your.namespace.handler-test)
+#+end_example
+
+** Why?
+Running your entire test suite on every change is slow. Running only the tests you think are affected is error-prone. This script does the right thing: finds all affected tests automatically.
+
+Perfect for:
+- Pre-commit hooks
+- CI pipelines (run on feature branches)
+- Local development (fast feedback)
+
+** TODO
+- Run integration tests with setup.
+- Support other test runners.
+- Support ClojureScript.
+
