@@ -2,7 +2,9 @@
 
 (require '[clojure.string :as str]
          '[clojure.set :as set]
-         '[babashka.process :refer [shell]])
+         '[babashka.process :refer [shell]]
+         '[babashka.cli :as cli]
+         '[clojure.java.io :as io])
 
 (defn run-search
   [rg-args grep-args default]
@@ -96,48 +98,102 @@
                    (concat ["grep" "-Er" "-l"] grep-includes [pattern "test"])
                    [])))))
 
-(defn main
-  []
-  (let [selector (or (first *command-line-args*) ":default")
-        project-dir (or (second *command-line-args*) "./")
+(defn normalize-path
+  "Convert path to absolute and ensure it ends with /"
+  [path]
+  (let [file (io/file path)
+        abs-path (.getAbsolutePath file)
+        normalized (str/replace abs-path #"^~" (System/getProperty "user.home"))]
+    (if (str/ends-with? normalized "/")
+      normalized
+      (str normalized "/"))))
+
+(defn show-help
+  [spec]
+  (cli/format-opts (merge spec {:order (vec (keys (:spec spec)))})))
+
+(def cli-spec
+  {:spec
+   {:selector {:desc "Test selector (:default, :unit or :integration)"
+               :default ":default"
+               :alias :s}
+    :dir {:desc "Project directory path"
+          :default "."
+          :alias :d
+          :validate {:pred #(or (= % ".") (io/.exists (io/file %)))
+                     :ex-msg "Directory does not exist"}}
+    :lang {:desc "Language to test (:clj, :cljs or :both)"
+           :default :both
+           :alias :l
+           :coerce :keyword
+           :validate {:pred #(contains? #{:clj :cljs :both} %)
+                      :ex-msg "lang must be :clj, :cljs or :both"}}
+    :help {:desc "Show help"
+           :alias :h}}
+   :error-fn
+   (fn [{:keys [type cause msg option]}]
+     (when (= :org.babashka/cli type)
+       (case cause
+         :require
+         (println (format "Missing required argument: %s\n" option))
+         :validate
+         (println (format "Validation error for --%s: %s\n" option msg)))))})
+
+(defn- main
+  [& args]
+  (let [opts (cli/parse-opts args cli-spec)
+        {:keys [selector dir lang help]} opts
+        project-dir (normalize-path dir)
         shadow-config-path (str project-dir "shadow-cljs.edn")
-        files-clj (changed-files :clj)
-        files-cljs (changed-files :cljs)]
+        run-clj? (contains? #{:clj :both} lang)
+        run-cljs? (contains? #{:cljs :both} lang)
+        files-clj (when run-clj? (changed-files :clj))
+        files-cljs (when run-cljs? (changed-files :cljs))]
+
+    (when (or help (:h opts))
+      (println "Usage: test_runner.clj [OPTIONS]\n")
+      (println "Run tests for changed namespaces and their dependents\n")
+      (println (show-help cli-spec))
+      (System/exit 0))
+
     (when (and (empty? files-clj) (empty? files-cljs))
-      (println "No changed .clj/.cljc/.cljs files")
+      (println (str "No changed" (case lang :clj " .clj/.cljc " :cljs " .cljc/.cljs ") "files"))
       (System/exit 0))
 
     ;; Clojure tests
-    (let [changed-nss (map #(file->ns % :clj) files-clj)
-          all-affected (transitive-dependents changed-nss :clj)
-          test-nss (->> all-affected
-                        (map ns->test-ns)
-                        (filter #(test-ns-exists? % :clj)))]
-      (when (seq test-nss)
-        (println "Changed CLJ namespaces:" (str/join ", " changed-nss))
-        (println "Running Clojure tests for:" test-nss)
-        (apply shell {:continue true} "lein" "eftest" selector test-nss)))
+    (when run-clj?
+      (let [changed-nss (map #(file->ns % :clj) files-clj)
+            all-affected (transitive-dependents changed-nss :clj)
+            test-nss (->> all-affected
+                          (map ns->test-ns)
+                          (filter #(test-ns-exists? % :clj)))]
+        (when (seq test-nss)
+          (println "Changed CLJ namespaces:" (str/join ", " changed-nss))
+          (println "Running Clojure tests for:" test-nss)
+          (apply shell {:continue true :dir project-dir} "lein" "eftest" selector test-nss))))
 
     ;; ClojureScript tests
-    (let [changed-nss (map #(file->ns % :cljs) files-cljs)
-          all-affected (transitive-dependents changed-nss :cljs)
-          test-nss (->> all-affected
-                        (map ns->test-ns)
-                        (filter #(test-ns-exists? % :cljs)))]
-      (when (seq test-nss)
-        (println "Changed CLJS namespaces:" (str/join ", " changed-nss))
-        (println "Running ClojureScript tests for:" test-nss)
-        ;; Generate temp shadow config
-        (let [ns-pattern (str "(" (str/join "|" (map #(str/replace % "." "\\.") test-nss)) ")")
-              shadow-config (slurp shadow-config-path)
-              modified-config (str/replace shadow-config
-                                           #":ns-regexp \"-test\""
-                                           (str ":ns-regexp \"" ns-pattern "\""))]
-          (spit shadow-config-path modified-config)
-          (try
-            (shell {:continue true :dir project-dir} "npx" "shadow-cljs" "compile" "test")
-            (shell {:continue true :dir project-dir} "npx" "karma" "start" "karma.conf.js" "--single-run")
-            (finally
-              (spit shadow-config-path shadow-config))))))))
+    (when run-cljs?
+      (let [changed-nss (map #(file->ns % :cljs) files-cljs)
+            all-affected (transitive-dependents changed-nss :cljs)
+            test-nss (->> all-affected
+                          (map ns->test-ns)
+                          (filter #(test-ns-exists? % :cljs)))]
+        (when (seq test-nss)
+          (println "Changed CLJS namespaces:" (str/join ", " changed-nss))
+          (println "Running ClojureScript tests for:" test-nss)
 
-(main)
+          ;; Modify shadow config with test namespaces pattern
+          (let [ns-pattern (str "(" (str/join "|" (map #(str/replace % "." "\\\\.") test-nss)) ")")
+                shadow-config (slurp shadow-config-path)
+                modified-config (str/replace shadow-config
+                                             #":ns-regexp \"-test\""
+                                             (str ":ns-regexp \"" ns-pattern "\""))]
+            (spit shadow-config-path modified-config)
+            (try
+              (shell {:continue true :dir project-dir} "npx" "shadow-cljs" "compile" "test")
+              (shell {:continue true :dir project-dir} "npx" "karma" "start" "karma.conf.js" "--single-run")
+              (finally
+                (spit shadow-config-path shadow-config)))))))))
+
+(apply main *command-line-args*)
