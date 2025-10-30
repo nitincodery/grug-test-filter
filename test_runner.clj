@@ -70,8 +70,8 @@
           pattern (str "(" bracket-pattern "|" qualified-pattern ")")
           {:keys [globs includes]} (lang-patterns lang)]
       (->> (run-search
-            (vec (concat ["rg" "-l"] globs [pattern "src" "test"]))
-            (vec (concat ["grep" "-Er" "-l"] includes [pattern "src" "test"]))
+            (into [] (concat ["rg" "-l"] globs [pattern "src" "test"]))
+            (into [] (concat ["grep" "-Er" "-l"] includes [pattern "src" "test"]))
             [])
            (map #(file->ns % lang))
            set))))
@@ -118,6 +118,7 @@
   {:spec
    {:selector {:desc "Test selector (:default, :unit or :integration)"
                :default ":default"
+               :coerce :keyword
                :alias :s}
     :dir {:desc "Project directory path"
           :default "."
@@ -125,6 +126,7 @@
     :lang {:desc "Language to test (:clj, :cljs or :both)"
            :default :both
            :alias :l
+           :coerce :keyword
            :validate {:pred #(contains? #{:clj :cljs :both} %)
                       :ex-msg "lang must be :clj, :cljs or :both"}}
     :help {:desc "Show help"
@@ -151,6 +153,8 @@
       (println "Run tests for changed namespaces and their dependents\n")
       (println (show-help cli-spec))
       (System/exit 0))
+    (when (and run-cljs? (not= selector ":default"))
+      (println "Warning: Selectors aren't supported for CLJS tests; using default behavior."))
     (when (and (empty? files-clj) (empty? files-cljs))
       (println (str "No changed" (case lang :clj " .clj/.cljc " :cljs " .cljc/.cljs ") "files"))
       (System/exit 0))
@@ -167,7 +171,7 @@
                                             (filter #(test-ns-exists? % :cljs))))]
                 (println "Changed CLJS namespaces:" (str/join ", " (map #(file->ns % :cljs) files-cljs)))
                 (println "Running ClojureScript tests for:" test-nss)
-                (let [ns-pattern (str "(" (str/join "|" (map #(str/replace % "." "\\\\.") test-nss)) ")")
+                (let [ns-pattern (str "(" (str/join "|" (map #(str/replace % "." "\\.") test-nss)) ")")
                       shadow-config (slurp shadow-config-path)
                       modified-config (str/replace shadow-config #":ns-regexp \"-test\"" (str ":ns-regexp \"" ns-pattern "\""))]
                   (spit shadow-config-path modified-config)
