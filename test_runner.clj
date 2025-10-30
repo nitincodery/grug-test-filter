@@ -2,6 +2,7 @@
 
 (require '[clojure.string :as str]
          '[clojure.set :as set]
+         '[clojure.edn :as edn]
          '[babashka.process :refer [shell]]
          '[babashka.cli :as cli]
          '[clojure.java.io :as io])
@@ -121,7 +122,7 @@
                :coerce :keyword
                :alias :s}
     :dir {:desc "Project directory path"
-          :default "."
+          :default (System/getProperty "user.dir")
           :alias :d}
     :lang {:desc "Language to test (:clj, :cljs or :both)"
            :default :both
@@ -137,6 +138,20 @@
        (case cause
          :require (println (format "Missing required argument: %s\n" option))
          :validate (println (format "Validation error for --%s: %s\n" option msg)))))})
+
+(defn- dashed-line
+  [n]
+  (apply str (repeat n "-")))
+
+(defn- print-block
+  [lang files test-nss]
+  (let [lang-str (case lang :clj " Clojure " :cljs " ClojureScript ")]
+    (println (dashed-line 50))
+    (println (str "Changed" lang-str "namespaces:"))
+    (println (str/join "\n" (map #(file->ns % lang) files)))
+    (println (str "\nRunning" lang-str "tests for:"))
+    (println (str/join "\n" test-nss))
+    (println (dashed-line 50))))
 
 (defn- main
   [& args]
@@ -162,18 +177,16 @@
               (when-let [test-nss (seq (->> (transitive-dependents (map #(file->ns % :clj) files-clj) :clj)
                                             (map ns->test-ns)
                                             (filter #(test-ns-exists? % :clj))))]
-                (println "Changed CLJ namespaces:" (str/join ", " (map #(file->ns % :clj) files-clj)))
-                (println "Running Clojure tests for:" test-nss)
+                (print-block :clj files-clj test-nss)
                 (apply shell {:continue true :dir project-dir} "lein" "eftest" selector test-nss)))
             (run-cljs-tests []
               (when-let [test-nss (seq (->> (transitive-dependents (map #(file->ns % :cljs) files-cljs) :cljs)
                                             (map ns->test-ns)
                                             (filter #(test-ns-exists? % :cljs))))]
-                (println "Changed CLJS namespaces:" (str/join ", " (map #(file->ns % :cljs) files-cljs)))
-                (println "Running ClojureScript tests for:" test-nss)
+                (print-block :cljs files-cljs test-nss)
                 (let [ns-pattern (str "(" (str/join "|" (map #(str/replace % "." "\\.") test-nss)) ")")
-                      shadow-config (slurp shadow-config-path)
-                      modified-config (str/replace shadow-config #":ns-regexp \"-test\"" (str ":ns-regexp \"" ns-pattern "\""))]
+                      shadow-config (edn/read-string (slurp shadow-config-path))
+                      modified-config (assoc-in shadow-config [:builds :test :ns-regexp] ns-pattern)]
                   (spit shadow-config-path modified-config)
                   (try
                     (shell {:continue true :dir project-dir} "npx" "shadow-cljs" "compile" "test")
