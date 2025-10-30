@@ -2,24 +2,31 @@
 A dead simple Babashka script that runs only the tests affected by your changes.
 
 ** What It Does
-- Finds changed =.clj/.cljc= files in your branch vs =main=
-- Discovers reverse dependencies (transitive)
+- Finds changed =.clj/.cljc/.cljs= files in your branch vs =main=
+- Discovers reverse dependencies (transitively)
 - Maps to test namespaces
-- Runs only affected tests with =lein eftest=
+- Runs only affected tests
+  + Clojure: =lein eftest=
+  + ClojureScript: =shadow-cljs compile test= and =karma start=
 
 ** Prerequisites
 - [[https://babashka.org/][Babashka]]
-- [[https://github.com/BurntSushi/ripgrep][ripgrep]]
+- [[https://github.com/BurntSushi/ripgrep][ripgrep]] or grep
 - [[https://leiningen.org/][Leiningen]] with [[https://github.com/weavejester/eftest][eftest]]
+- [[https://github.com/thheller/shadow-cljs][Shadow-CLJS]]
+- [[https://karma-runner.github.io/latest/index.html][Karma]]
+
+** Script Dependencies
+None. The script uses Babashka's built-in libraries, so no =deps.edn= file is required. All required namespaces are included with Babashka. See the [[https://book.babashka.org/#built-in-namespaces][Babashka documentation]] for more details.
 
 ** Installation
-1. Copy the script to your project root:
+1. Make the script executable:
 
 #+begin_src sh
 chmod +x test_runner.clj
 #+end_src
 
-2. Add test selectors to your =project.clj=:
+2. Add test selectors to your =project.clj= (for Clojure tests):
 
 #+begin_src clojure
 ;; Source: https://scribe.rip/helpshift-engineering/the-convoluted-magic-of-leiningen-test-selectors-2eb6c452dfcf
@@ -66,52 +73,63 @@ chmod +x test_runner.clj
 
 ** Usage
 #+begin_src sh
-# Run tests affected by changes in current branch vs main
-~/path/to/test_runner.clj
+# Show help
+/path/to/test_runner.clj --help
+
+# Run all affected tests (Clojure and ClojureScript) in the current directory
+/path/to/test_runner.clj
+
+# Run tests in a specific project directory
+/path/to/test_runner.clj --dir /path/to/your/project
+
+# Run only Clojure tests
+/path/to/test_runner.clj --lang :clj
+
+# Run only ClojureScript tests
+/path/to/test_runner.clj --lang :cljs
+
+# Run only unit tests (Clojure only)
+/path/to/test_runner.clj --selector :unit
+
+# Run only integration tests (Clojure only)
+/path/to/test_runner.clj --selector :integration
 #+end_src
 
-** How It Works
-1. *Git diff* - Compares your branch against =main=
-2. *Filter files* - Keeps only =.clj= and =.cljc= files
-3. *Find dependents* - Uses ripgrep to discover which files require the changed namespaces
-4. *Transitive closure* - Recursively finds all affected files
-5. *Map to tests* - Appends =-test= to each namespace
-6. *Filter tests* - Only includes namespaces that have actual test files
-7. *Run eftest* - Executes tests with =:unit= selector (excludes =^:integration= tests)
+*Note:* The =--selector= option only applies to Clojure tests and is ignored for ClojureScript tests.
 
-** Directory Structure Support
-Works with any project structure:
+** How It Works
+1. *Git diff* - Compares your branch against =main= to find changed files.
+2. *Filter files* - Keeps only =.clj=, =.cljc=, and =.cljs= files based on the selected language.
+3. *Find dependents* - Uses =ripgrep= or =grep= to discover which files require the changed namespaces.
+4. *Transitive closure* - Recursively finds all affected files.
+5. *Map to tests* - Appends =-test= to each namespace.
+6. *Filter tests* - Only includes namespaces that have actual test files.
+7. *Run tests* - Executes the appropriate test command:
+   - *Clojure*: =lein eftest= with the specified selector.
+   - *ClojureScript*: Modifies =shadow-cljs.edn= to only run the affected tests, runs =shadow-cljs compile test=, and then =karma start=. It restores the original =shadow-cljs.edn= afterwards. The selector is ignored.
+
+** Directory Structure Requirement
+Works with project structure that separates source files into =src/clj=, =src/cljs=, =src/cljc= and test files into =test/clj=, =test/cljs=, =test/cljc=.
 
 #+begin_example
 src/
   clj/your/namespace.clj
+  cljs/your/other.cljs
   cljc/your/shared.cljc
 test/
   clj/your/namespace_test.clj
+  cljs/your/other_test.cljs
   cljc/your/shared_test.cljc
 #+end_example
 
-The script automatically strips =clj/= and =cljc/= prefixes when converting paths to namespaces.
-
-** Integration Tests
-By default, the script runs all tests (no selector). Pass =:unit= or =:integration= to run only those tests.
-
-To run only unit tests:
-
-#+begin_src sh
-~/path/to/test_runner.clj :unit
-#+end_src
-
-To run only integration tests:
-
-#+begin_src sh
-~/path/to/test_runner.clj :integration
-#+end_src
+The script automatically strips the language-specific directory prefixes when converting paths to namespaces.
 
 ** Example Output
 #+begin_example
-Changed namespaces: your.namespace.core, your.namespace.utils
-Running tests for: (your.namespace.core-test your.namespace.utils-test your.namespace.handler-test)
+Changed CLJ namespaces: your.namespace.core, your.namespace.utils
+Running Clojure tests for: (your.namespace.core-test your.namespace.utils-test your.namespace.handler-test)
+Changed CLJS namespaces: your.namespace.ui
+Running ClojureScript tests for: (your.namespace.ui-test)
 #+end_example
 
 ** Why?
@@ -125,5 +143,3 @@ Perfect for:
 ** Todo
 - Run integration tests with setup.
 - Support other test runners.
-- Support ClojureScript.
-
