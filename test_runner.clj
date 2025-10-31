@@ -171,7 +171,7 @@
     (when (and run-cljs? (not= selector ":default"))
       (println "Warning: Selectors aren't supported for CLJS tests; using default behavior."))
     (when (and (empty? files-clj) (empty? files-cljs))
-      (println (str "No changed" (case lang :clj " .clj/.cljc " :cljs " .cljc/.cljs ") "files"))
+      (println (str "No changed" (case lang :clj " .clj/.cljc " :cljs " .cljc/.cljs " :both " .clj/.cljc/.cljs ") "files"))
       (System/exit 0))
     (letfn [(run-clj-tests []
               (when-let [test-nss (seq (->> (transitive-dependents (map #(file->ns % :clj) files-clj) :clj)

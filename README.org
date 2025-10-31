@@ -24,6 +24,8 @@ None. The script uses Babashka's built-in libraries, so no =deps.edn= file is re
 
 #+begin_src sh
 chmod +x test_runner.clj
+OR
+bb ~/path/to/test_runner.clj
 #+end_src
 
 2. Add test selectors to your =project.clj= (for Clojure tests):
