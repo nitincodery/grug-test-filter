@@ -22,14 +22,16 @@
 (defn- run-search
   [rg-args grep-args default]
   (try
-    (->> (apply shell {:out :string :continue true} rg-args)
+    (->> (apply shell {:out :string
+                       :continue true} rg-args)
          :out
          str/split-lines
          (remove str/blank?)
          vec)
     (catch clojure.lang.ExceptionInfo _
       (try
-        (->> (apply shell {:out :string :continue true} grep-args)
+        (->> (apply shell {:out :string
+                           :continue true} grep-args)
              :out
              str/split-lines
              (remove str/blank?)
@@ -133,8 +135,8 @@
     :help {:desc "Show help"
            :alias :h}}
    :error-fn
-   (fn [{:keys [type cause msg option]}]
-     (when (= :org.babashka/cli type)
+   (fn [{:keys [typ cause msg option]}]
+     (when (= :org.babashka/cli typ)
        (case cause
          :require (println (format "Missing required argument: %s\n" option))
          :validate (println (format "Validation error for --%s: %s\n" option msg)))))})
@@ -178,7 +180,8 @@
                                             (map ns->test-ns)
                                             (filter #(test-ns-exists? % :clj))))]
                 (print-block :clj files-clj test-nss)
-                (apply shell {:continue true :dir project-dir} "lein" "eftest" selector test-nss)))
+                (apply shell {:continue true
+                              :dir project-dir} "lein" "eftest" selector test-nss)))
             (run-cljs-tests []
               (when-let [test-nss (seq (->> (transitive-dependents (map #(file->ns % :cljs) files-cljs) :cljs)
                                             (map ns->test-ns)
@@ -189,8 +192,10 @@
                       modified-config (assoc-in shadow-config [:builds :test :ns-regexp] ns-pattern)]
                   (spit shadow-config-path modified-config)
                   (try
-                    (shell {:continue true :dir project-dir} "npx" "shadow-cljs" "compile" "test")
-                    (shell {:continue true :dir project-dir} "npx" "karma" "start" "karma.conf.js" "--single-run")
+                    (shell {:continue true
+                            :dir project-dir} "npx" "shadow-cljs" "compile" "test")
+                    (shell {:continue true
+                            :dir project-dir} "npx" "karma" "start" "karma.conf.js" "--single-run")
                     (finally
                       (spit shadow-config-path shadow-config))))))]
       (when run-clj? (run-clj-tests))
