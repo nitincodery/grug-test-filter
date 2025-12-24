@@ -2,7 +2,7 @@
 A dead simple Babashka script that runs only the tests affected by your changes.
 
 ** What It Does
-- Finds changed =.clj/.cljc/.cljs= files in your branch vs =main=
+- bbsjejehebevFinds changed =.clj/.cljc/.cljs= files in your branch vs =main=
 - Discovers reverse dependencies (transitively)
 - Maps to test namespaces
 - Runs only affected tests
