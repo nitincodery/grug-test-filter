@@ -1,38 +1,8 @@
-* Grug Test Filter
+
 A dead simple Babashka script that runs only the tests affected by your changes.
-
-** What It Does
-- Finds changed =.clj/.cljc/.cljs= files in your branch vs =main=
-- Discovers reverse dependencies (transitively)
-- Maps to test namespaces
-- Runs only affected tests
-  + Clojure: =lein eftest=
-  + ClojureScript: =shadow-cljs compile test= and =karma start=
-
-** Prerequisites
-- [[https://babashka.org/][Babashka]]
-- [[https://github.com/BurntSushi/ripgrep][ripgrep]] or grep
-- [[https://leiningen.org/][Leiningen]] with [[https://github.com/weavejester/eftest][eftest]]
-- [[https://github.com/thheller/shadow-cljs][Shadow-CLJS]]
-- [[https://karma-runner.github.io/latest/index.html][Karma]]
-
-** Script Dependencies
-None. The script uses Babashka's built-in libraries, so no =deps.edn= file is required. All required namespaces are included with Babashka. See the [[https://book.babashka.org/#built-in-namespaces][Babashka documentation]] for more details.
-
-** Installation
-1. Make the script executable:
-
-#+begin_src sh
-chmod +x test_runner.clj
-OR
-bb ~/path/to/test_runner.clj
-#+end_src
-
-2. Add test selectors to your =project.clj= (for Clojure tests):
-
-#+begin_src clojure
-;; Source: https://scribe.rip/helpshift-engineering/the-convoluted-magic-of-leiningen-test-selectors-2eb6c452dfcf
-:test-selectors {:default (constantly true)
+gsoisueheb
+/scribe.rip/helpshift-engineering/the-convoluted-magic-of-leiningen-test-selectors-2eb6c452dfcf
+:bbsbjskslsmtest-selectors {:default (constantly true)
                  :unit [(fn [namespc & selector-args]
                           (or (empty? selector-args)
                               (some (fn [selector-arg]
